@@ -23,6 +23,16 @@ class OursPrecipitationModel(BasePrecipitationModel):
 
     Attributes:
         identifier (SimpleContourIdentifier): The storm identifier used for identifying storms in radar images.
+    
+    Arguments:
+        identifier (MorphContourIdentifier): The storm identifier used for identifying storms in radar images.
+        max_velocity (float): The maximum velocity of the storms. This should be adjusted depend on resolutions of images.
+        weights (tuple[float, float]): The weights for the distance and shape vector similarity in the matching process (Adding to 1)
+        radii (list[int]): The radii of the polar sectors.
+        num_sectors (int): The number of polar sectors.
+        density (float): The density of the storms.
+        velocity_estimate_weights (tuple[float, float]): The weights of V_coarse and V_cc for estimating the velocity (Adding to 1)
+        particle_matching_method (str): The method for matching particles.
     """
     identifier: MorphContourIdentifier
     matcher: StormMatcher

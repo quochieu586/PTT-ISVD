@@ -34,6 +34,9 @@ class STitanMatcher:
             prev_storm: ParticleStorm = prev_storm  # type: ignore
             
             forecasted_particles = prev_storm.forecast_particles(grid_y, grid_x, vy, vx)
+            # Recasting the particles to remain inside the image boundaries
+            forecasted_particles[:, 0] = np.clip(forecasted_particles[:, 0], 0, storms_map_1.dbz_map.shape[0]-1)
+            forecasted_particles[:, 1] = np.clip(forecasted_particles[:, 1], 0, storms_map_1.dbz_map.shape[1]-1)
             
             for curr_idx, curr_storm in enumerate(storms_map_2.storms):
                 curr_storm: ParticleStorm = curr_storm  # type: ignore
