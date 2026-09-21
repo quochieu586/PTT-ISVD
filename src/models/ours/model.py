@@ -86,13 +86,25 @@ class OursPrecipitationModel(BasePrecipitationModel):
 
             if curr_storms_map.time_frame <= prev_storms_map.time_frame:
                 raise ValueError("Current storms map time frame must be later than the previous one.")
-            
-            update_list = self.matcher.match_storms(
-                storms_map_lst_1=prev_storms_map,
-                storms_map_lst_2=curr_storms_map,
-                coarse_threshold=coarse_threshold,
-                fine_threshold=fine_threshold
-            )
+
+            if len(curr_storms_map.storms) == 0:
+                # If there are no storms in the current map, we can only update the tracker with no new tracks.
+                update_list = []
+            elif len(prev_storms_map.storms) == 0:
+                # If there are no storms in the previous map, all current storms are new.
+                update_list = [MatchedStormPair(
+                    prev_storm_order=-1,
+                    curr_storm_order=i,
+                    update_type=UpdateType.NEW
+                ) for i in range(len(curr_storms_map.storms))]
+                
+            else:
+                update_list = self.matcher.match_storms(
+                    storms_map_lst_1=prev_storms_map,
+                    storms_map_lst_2=curr_storms_map,
+                    coarse_threshold=coarse_threshold,
+                    fine_threshold=fine_threshold
+                )
 
             for info in update_list:
                 if info.update_type == UpdateType.NEW:

@@ -67,8 +67,19 @@ class TitanPrecipitationModel(BasePrecipitationModel):
             prev_storms_map = self.storms_maps[-1]
             dt = (curr_storms_map.time_frame - prev_storms_map.time_frame).seconds / 3600   # scaled to hour
 
-            # match using Hungarian algorithm
-            matched: list[MatchedStormPair] = self.matcher.match_storms(prev_storms_map, curr_storms_map)
+            if len(curr_storms_map.storms) == 0:
+                # If there are no storms in the current map, we can only update the tracker with no new tracks.
+                matched = []
+            elif len(prev_storms_map.storms) == 0:
+                # If there are no storms in the previous map, all current storms are new.
+                matched = [MatchedStormPair(
+                    prev_storm_order=-1,
+                    curr_storm_order=i,
+                    update_type=UpdateType.NEW
+                ) for i in range(len(curr_storms_map.storms))]
+            else:
+                # match using Hungarian algorithm
+                matched: list[MatchedStormPair] = self.matcher.match_storms(prev_storms_map, curr_storms_map)
 
             for info in matched:
                 # print(f"Matched: Prev Storm {prev_storms_map.storms[info.prev_storm_order].id} -> Curr Storm {curr_storms_map.storms[info.curr_storm_order].id} | Update Type: {info.update_type.name}")

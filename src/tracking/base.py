@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from src.cores.base import BaseObject
 import numpy as np
-import ot
 from scipy.optimize import linear_sum_assignment
 
 DEFALT_ALPHA = 1e3
