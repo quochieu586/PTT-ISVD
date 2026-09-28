@@ -88,9 +88,16 @@ class ISCITPrecipitationModel(BasePrecipitationModel):
 
             # match using Hungarian algorithm
             first_guess = len(self.storms_maps) == 1
-            matched: list[MatchedStormPair] = self.matcher.match_storms(
-                prev_storms_map, curr_storms_map, first_guess=first_guess
-            )
+            if len(curr_storms_map.storms) == 0:
+                matched = []
+            elif len(prev_storms_map.storms) == 0:
+                matched = [
+                    MatchedStormPair(prev_storm_order=-1, curr_storm_order=i, update_type=UpdateType.NEW) for i in range(len(curr_storms_map.storms))
+                ]
+            else:
+                matched: list[MatchedStormPair] = self.matcher.match_storms(
+                    prev_storms_map, curr_storms_map, first_guess=first_guess
+                )
 
             for info in matched:
                 if info.update_type == UpdateType.NEW:

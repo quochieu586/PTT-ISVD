@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from tqdm.notebook import tqdm
 
 from src.cores.base import StormsMap
-from src.identification import BaseStormIdentifier, HypothesisIdentifier
+from src.identification import BaseStormIdentifier, HypothesisIdentifier, MorphContourIdentifier
 from src.preprocessing import convert_contours_to_polygons
 from src.models.base.model import BasePrecipitationModel
 from src.models.base.tracker import TrackingHistory, UpdateType
@@ -23,18 +23,30 @@ class OursPrecipitationModel(BasePrecipitationModel):
 
     Attributes:
         identifier (SimpleContourIdentifier): The storm identifier used for identifying storms in radar images.
+    
+    Arguments:
+        identifier (MorphContourIdentifier): The storm identifier used for identifying storms in radar images.
+        max_velocity (float): The maximum velocity of the storms. This should be adjusted depend on resolutions of images.
+        weights (tuple[float, float]): The weights for the distance and shape vector similarity in the matching process (Adding to 1)
+        radii (list[int]): The radii of the polar sectors.
+        num_sectors (int): The number of polar sectors.
+        density (float): The density of the storms.
+        velocity_estimate_weights (tuple[float, float]): The weights of V_coarse and V_cc for estimating the velocity (Adding to 1)
+        particle_matching_method (str): The method for matching particles.
     """
-    identifier: HypothesisIdentifier
+    identifier: MorphContourIdentifier
     matcher: StormMatcher
     tracker: TrackingHistory
     storms_maps: list[StormsMap]
 
-    def __init__(self, identifier: HypothesisIdentifier, max_velocity: float = DEFAULT_MAX_VELOCITY, weights: tuple[float, float] = DEFAULT_WEIGHTS,
+    def __init__(self, identifier: MorphContourIdentifier, max_velocity: float = DEFAULT_MAX_VELOCITY, weights: tuple[float, float] = DEFAULT_WEIGHTS,
                  radii: list[int] = DEFAULT_RADII, num_sectors: int = DEFAULT_NUM_SECTORS, density: float = DEFAULT_DENSITY,
-                 velocity_estimate_weights: tuple[float, float] = (0.5, 0.5)):
+                 velocity_estimate_weights: tuple[float, float] = (0.5, 0.5), particle_matching_method: str = 'linear'):
         self.identifier = identifier
         self.storms_maps = []
-        self.matcher = StormMatcher(max_velocity=max_velocity, weights=weights, velocity_estimate_weights=velocity_estimate_weights)
+        self.matcher = StormMatcher(max_velocity=max_velocity, weights=weights, 
+                                    velocity_estimate_weights=velocity_estimate_weights,
+                                    particle_matching_method=particle_matching_method)
         self.tracker = None
 
         self.radii = radii
@@ -42,7 +54,6 @@ class OursPrecipitationModel(BasePrecipitationModel):
         self.density = density
 
         self.kernels = construct_polar_kernels(radii, num_sectors)
-        # self.kernels = construct_polar_kernels_gaussian(radii, num_sectors, sigma_scale=0.5)
     
     def identify_storms(
             self, dbz_img: np.ndarray, time_frame: datetime, map_id: str, threshold: int, filter_area: float
@@ -53,17 +64,6 @@ class OursPrecipitationModel(BasePrecipitationModel):
 
         # Pre-compute the convolution of the dbz map with all sector kernels
         img = from_numpy(dbz_img >= threshold).float().unsqueeze(0).unsqueeze(0)   # Shape: (1, 1, H, W)
-        
-        # img = from_numpy(dbz_img / 35).float().unsqueeze(0).unsqueeze(0)   # Shape: (1, 1, H, W)
-
-        # TEST: use f(u,v) = u**2+v**2 instead of the binary mask to see if the convolution works as expected
-        # img = np.zeros_like(dbz_img)  # Create an empty image with the same shape as dbz_img
-        # img = np.arange(img.shape[0])[:, None]**2 + np.arange(img.shape[1])[None, :]**2
-        # img = from_numpy(np.where(dbz_img >= threshold, img, 0)).float().unsqueeze(0).unsqueeze(0)
-
-        # TEST: use f = dBZ value
-        # img = from_numpy(dbz_img).float().unsqueeze(0).unsqueeze(0) 
-
         sectors_convolved_np = fft_conv2d(img=img, kernel=from_numpy(self.kernels).unsqueeze(1).float())
 
         storms = [ShapeVectorStorm(
@@ -86,13 +86,25 @@ class OursPrecipitationModel(BasePrecipitationModel):
 
             if curr_storms_map.time_frame <= prev_storms_map.time_frame:
                 raise ValueError("Current storms map time frame must be later than the previous one.")
-            
-            update_list = self.matcher.match_storms(
-                storms_map_lst_1=prev_storms_map,
-                storms_map_lst_2=curr_storms_map,
-                coarse_threshold=coarse_threshold,
-                fine_threshold=fine_threshold
-            )
+
+            if len(curr_storms_map.storms) == 0:
+                # If there are no storms in the current map, we can only update the tracker with no new tracks.
+                update_list = []
+            elif len(prev_storms_map.storms) == 0:
+                # If there are no storms in the previous map, all current storms are new.
+                update_list = [MatchedStormPair(
+                    prev_storm_order=-1,
+                    curr_storm_order=i,
+                    update_type=UpdateType.NEW
+                ) for i in range(len(curr_storms_map.storms))]
+                
+            else:
+                update_list = self.matcher.match_storms(
+                    storms_map_lst_1=prev_storms_map,
+                    storms_map_lst_2=curr_storms_map,
+                    coarse_threshold=coarse_threshold,
+                    fine_threshold=fine_threshold
+                )
 
             for info in update_list:
                 if info.update_type == UpdateType.NEW:
